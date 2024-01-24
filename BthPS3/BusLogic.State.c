@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -43,8 +43,6 @@
  //
  // Called before PDO creation
  // 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-_IRQL_requires_same_
 NTSTATUS
 BthPS3_PDO_EvtPreCreate(
 	_In_ DMFMODULE DmfModule,
@@ -176,8 +174,6 @@ BthPS3_PDO_EvtPreCreate(
 //
 // Called after PDO creation
 // 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-_IRQL_requires_same_
 NTSTATUS
 BthPS3_PDO_EvtPostCreate(
 	_In_ DMFMODULE DmfModule,

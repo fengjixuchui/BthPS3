@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -88,7 +88,7 @@ BthPS3_DeviceContextHeaderInit(
 			break;
 		}
 
-		if (!NT_SUCCESS(status = WdfSpinLockCreate(
+		if (!NT_SUCCESS(status = WdfWaitLockCreate(
 			&attributes,
 			&Header->ClientsLock
 		)))
@@ -104,9 +104,9 @@ BthPS3_DeviceContextHeaderInit(
 			break;
 		}
 
-		if (!NT_SUCCESS(status = WdfSpinLockCreate(
+		if (!NT_SUCCESS(status = WdfWaitLockCreate(
 			&attributes,
-			&Header->SlotsSpinLock
+			&Header->SlotsLock
 		)))
 		{
 			break;

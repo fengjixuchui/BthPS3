@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -57,6 +57,7 @@
         WPP_DEFINE_BIT(TRACE_BUSLOGIC)                                 \
 		WPP_DEFINE_BIT(TRACE_PSM)								       \
         WPP_DEFINE_BIT(TRACE_UTIL)								       \
+        WPP_DEFINE_BIT(TRACE_COMPAT)								   \
         )                             
 
 #define WPP_FLAG_LEVEL_LOGGER(flag, level)                                  \

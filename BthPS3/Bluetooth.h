@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -35,6 +35,7 @@
  **********************************************************************************/
 
 
+// ReSharper disable CppClangTidyModernizeMacroToEnum
 #pragma once
 
 #include <bthdef.h>
@@ -47,9 +48,9 @@
 #include <bthguid.h>
 
 #define POOLTAG_BTHPS3                  '3SPB'
-#define BTH_DEVICE_INFO_MAX_COUNT       0x0A
-#define BTH_DEVICE_INFO_MAX_RETRIES     0x05
-#define BTHPS3_MAX_NUM_DEVICES			0xFF
+#define BTH_DEVICE_INFO_MAX_COUNT       UCHAR_MAX
+#define BTH_DEVICE_INFO_MAX_RETRIES     UCHAR_MAX
+#define BTHPS3_MAX_NUM_DEVICES			UCHAR_MAX
 #define BTHPS3_BTH_ADDR_MAX_CHARS		13 /* 12 characters + NULL terminator */
 
 
@@ -90,7 +91,7 @@ typedef struct _BTHPS3_DEVICE_CONTEXT_HEADER
 	//
 	// Lock for ClientConnections collection
 	// 
-	WDFSPINLOCK ClientsLock;
+	WDFWAITLOCK ClientsLock;
 
 	//
 	// DMF module to handle PDO creation
@@ -105,7 +106,7 @@ typedef struct _BTHPS3_DEVICE_CONTEXT_HEADER
 	//
 	// Lock protecting Slots access
 	// 
-	WDFSPINLOCK SlotsSpinLock;
+	WDFWAITLOCK SlotsLock;
 
 	//
 	// DMF module to enqueue work items
@@ -260,7 +261,7 @@ BthPS3_UnregisterL2CAPServer(
 
 #pragma endregion
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_max_(PASSIVE_LEVEL)
 NTSTATUS
 BthPS3_DeviceContextHeaderInit(
 	PBTHPS3_DEVICE_CONTEXT_HEADER Header,

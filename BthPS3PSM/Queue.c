@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2021, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -35,11 +35,13 @@
  **********************************************************************************/
 
 
+
 #include "driver.h"
 #include "queue.tmh"
 #include <usb.h>
 #include <usbioctl.h>
 #include <wdfusb.h>
+#include <BthPS3PSMETW.h>
 
 
 #ifdef ALLOC_PRAGMA
@@ -73,19 +75,20 @@ BthPS3PSM_QueueInitialize(
     // 
     queueConfig.EvtIoInternalDeviceControl = BthPS3PSMEvtIoInternalDeviceControl;
 
-    status = WdfIoQueueCreate(
+    if (!NT_SUCCESS(status = WdfIoQueueCreate(
         Device,
         &queueConfig,
         WDF_NO_OBJECT_ATTRIBUTES,
         &queue
-    );
-
-    if (!NT_SUCCESS(status)) {
+    ))) 
+    {
         TraceError(
             TRACE_QUEUE,
             "WdfIoQueueCreate failed with %!STATUS!",
             status
         );
+        EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfDeviceOpenRegistryKey", status);
+
         return status;
     }
 
@@ -104,28 +107,24 @@ BthPS3PSMEvtIoInternalDeviceControl(
     _In_ ULONG IoControlCode
 )
 {
-    NTSTATUS                    status;
-    WDF_REQUEST_SEND_OPTIONS    options;
-    BOOLEAN                     ret;
-    PIRP                        irp;
-    PURB                        urb;
-    WDFDEVICE                   device;
-    PDEVICE_CONTEXT             pContext;
+	NTSTATUS status;
+	WDF_REQUEST_SEND_OPTIONS options;
+	BOOLEAN ret;
 
 
-    UNREFERENCED_PARAMETER(OutputBufferLength);
+	UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
 
-    device = WdfIoQueueGetDevice(Queue);
-    pContext = DeviceGetContext(device);
-    irp = WdfRequestWdmGetIrp(Request);
+	const WDFDEVICE device = WdfIoQueueGetDevice(Queue);
+	const PDEVICE_CONTEXT pContext = DeviceGetContext(device);
+	const PIRP irp = WdfRequestWdmGetIrp(Request);
 
     //
     // As a BTHUSB lower filter driver we expect USB/URB traffic
     // 
     if (IoControlCode == IOCTL_INTERNAL_USB_SUBMIT_URB)
     {
-        urb = (PURB)URB_FROM_IRP(irp);
+	    const PURB urb = (PURB)URB_FROM_IRP(irp);
 
         switch (urb->UrbHeader.Function)
         {
@@ -212,10 +211,16 @@ BthPS3PSMEvtIoInternalDeviceControl(
     // 
     WdfRequestFormatRequestUsingCurrentType(Request);
 
-    WDF_REQUEST_SEND_OPTIONS_INIT(&options,
-        WDF_REQUEST_SEND_OPTION_SEND_AND_FORGET);
+    WDF_REQUEST_SEND_OPTIONS_INIT(
+        &options,
+        WDF_REQUEST_SEND_OPTION_SEND_AND_FORGET
+    );
 
-    ret = WdfRequestSend(Request, WdfDeviceGetIoTarget(WdfIoQueueGetDevice(Queue)), &options);
+    ret = WdfRequestSend(
+        Request,
+        WdfDeviceGetIoTarget(WdfIoQueueGetDevice(Queue)),
+        &options
+    );
 
     if (ret == FALSE) {
         status = WdfRequestGetStatus(Request);
@@ -224,6 +229,7 @@ BthPS3PSMEvtIoInternalDeviceControl(
             "WdfRequestSend failed with status %!STATUS!", 
             status
         );
+        EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRequestGetStatus", status);
         WdfRequestComplete(Request, status);
     }
 

@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2021, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -54,5 +54,7 @@ VOID
 BthPS3PSM_DeleteControlDevice(
     WDFDEVICE Device
 );
+
+EVT_WDF_WORKITEM BthPS3PSM_EvtSaveConfigToRegistry;
 
 #endif

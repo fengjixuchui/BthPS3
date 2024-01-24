@@ -76,5 +76,13 @@
     <ResourceCompile Include="BthPS3PSM.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+    <ResourceCompile Include="$(IntDir)BthPS3PSMETW.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MessageCompile Include="BthPS3PSM.man">
+      <Filter>Resource Files</Filter>
+    </MessageCompile>
   </ItemGroup>
 </Project>

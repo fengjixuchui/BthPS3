@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2021, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -41,6 +41,8 @@
 #include <usbdi.h>
 #include <usbdlib.h>
 #include <wdfusb.h>
+#include <BthPS3PSMETW.h>
+#include <devpkey.h>
 
 #ifdef BTHPS3PSM_WITH_CONTROL_DEVICE
 extern WDFCOLLECTION   FilterDeviceCollection;
@@ -55,7 +57,6 @@ extern WDFWAITLOCK     FilterDeviceCollectionLock;
 
 #define BTHPS3PSM_DEVICE_PROPERTY_LENGTH        0xFF
 #define BTHPS3PSM_USB_ENUMERATOR_NAME           L"USB"
-#define BTHPS3PSM_SYSTEM_ENUMERATOR_NAME        L"ROOT"
 
 
 //
@@ -66,42 +67,34 @@ BthPS3PSM_CreateDevice(
     _Inout_ PWDFDEVICE_INIT DeviceInit
 )
 {
-    WDF_OBJECT_ATTRIBUTES           deviceAttributes;
-    WDFDEVICE                       device;
-    NTSTATUS                        status;
-    WDF_PNPPOWER_EVENT_CALLBACKS    pnpPowerCallbacks;
-    PDEVICE_CONTEXT                 deviceContext;
-    WDFKEY                          key;
-    WDF_OBJECT_ATTRIBUTES           stringAttribs;
-    BOOLEAN                         isUsb = FALSE, isSystem = FALSE;
-    WDF_DEVICE_STATE                deviceState;
-	BOOLEAN							ret;
+    WDF_OBJECT_ATTRIBUTES deviceAttributes;
+    WDFDEVICE device;
+    NTSTATUS status;
+    WDF_PNPPOWER_EVENT_CALLBACKS pnpPowerCallbacks;
+    WDF_OBJECT_ATTRIBUTES stringAttributes;
+    BOOLEAN isUsb = FALSE;
+    BOOLEAN ret = FALSE;
+    WDFMEMORY instanceId = NULL;
 
     DECLARE_CONST_UNICODE_STRING(patchPSMRegValue, G_PatchPSMRegValue);
     DECLARE_CONST_UNICODE_STRING(linkNameRegValue, G_SymbolicLinkName);
 
 
+    FuncEntry(TRACE_DEVICE);
+
     PAGED_CODE();
 
-    if (NT_SUCCESS(BthPS3PSM_IsVirtualRootDevice(DeviceInit, &ret)) && ret)
+    if (NT_SUCCESS(BthPS3PSM_IsBthUsbDevice(DeviceInit, &ret)) && ret)
     {
-    	TraceVerbose(
-            TRACE_DEVICE,
-            "Device is virtual root device"
-        );
-	    isSystem = TRUE;
-    }
-    else if (NT_SUCCESS(BthPS3PSM_IsBthUsbDevice(DeviceInit, &ret)) && ret)
-    {
-    	TraceVerbose(
+        TraceVerbose(
             TRACE_DEVICE,
             "Device is USB Bluetooth device"
         );
-	    isUsb = TRUE;
+        isUsb = TRUE;
     }
     else
     {
-	    TraceEvents(TRACE_LEVEL_WARNING,
+        TraceEvents(TRACE_LEVEL_WARNING,
             TRACE_DEVICE,
             "Unsupported device type, aborting initialization"
         );
@@ -110,49 +103,63 @@ BthPS3PSM_CreateDevice(
     //
     // Don't create a device object and return
     // 
-    if (!isUsb && !isSystem) {
+    if (!isUsb)
+    {
+        FuncExitNoReturn(TRACE_DEVICE);
         return STATUS_SUCCESS;
     }
 
-    if (!isSystem)
-	    WdfFdoInitSetFilter(DeviceInit);
-
-    //
-    // PNP/Power callbacks
-    // 
-    WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpPowerCallbacks);
-    if (!isSystem)
-	    pnpPowerCallbacks.EvtDevicePrepareHardware = BthPS3PSM_EvtDevicePrepareHardware;
-    WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpPowerCallbacks);
-
-    //
-    // Device object attributes
-    // 
-    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&deviceAttributes, DEVICE_CONTEXT);
-    if (!isSystem)
-	    deviceAttributes.EvtCleanupCallback = BthPS3PSM_EvtDeviceContextCleanup;
-
-    status = WdfDeviceCreate(&DeviceInit, &deviceAttributes, &device);
-
-    if (NT_SUCCESS(status))
+    do
     {
-    	deviceContext = DeviceGetContext(device);
-    	
-	    if (isSystem)
-	    {
-		    //
-		    // Hide from UI
-		    // 
-		    WDF_DEVICE_STATE_INIT(&deviceState);
-		    deviceState.DontDisplayInUI = WdfTrue;
-		    WdfDeviceSetDeviceState(device, &deviceState);
+        if (!NT_SUCCESS(status = BthPS3PSM_GetPropertyInstanceId(
+            DeviceInit,
+            &instanceId
+        )))
+        {
+            TraceError(
+                TRACE_DEVICE,
+                "BthPS3PSM_GetPropertyInstanceId failed with status %!STATUS!",
+                status
+            );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"BthPS3PSM_GetPropertyInstanceId", status);
+            break;
+        }
 
-	    	//
-	    	// Done, no need for further initialization
-	    	// 
-		    return status;
-	    }
-    	
+        WdfFdoInitSetFilter(DeviceInit);
+
+        //
+        // PNP/Power callbacks
+        // 
+        WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpPowerCallbacks);
+        pnpPowerCallbacks.EvtDevicePrepareHardware = BthPS3PSM_EvtDevicePrepareHardware;
+
+        WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpPowerCallbacks);
+
+        //
+        // Device object attributes
+        // 
+        WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&deviceAttributes, DEVICE_CONTEXT);
+        deviceAttributes.EvtCleanupCallback = BthPS3PSM_EvtDeviceContextCleanup;
+
+        if (!NT_SUCCESS(status = WdfDeviceCreate(
+            &DeviceInit,
+            &deviceAttributes,
+            &device
+        )))
+        {
+            TraceError(
+                TRACE_DEVICE,
+                "WdfDeviceCreate failed with status %!STATUS!",
+                status
+            );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfDeviceCreate", status);
+            break;
+        }
+
+        PDEVICE_CONTEXT deviceContext = DeviceGetContext(device);
+
+        deviceContext->InstanceId = instanceId;
+
 #pragma region Add this device to global collection
 
 #ifdef BTHPS3PSM_WITH_CONTROL_DEVICE
@@ -160,122 +167,146 @@ BthPS3PSM_CreateDevice(
         //
         // Add this device to the FilterDevice collection.
         //
-        status = WdfWaitLockAcquire(FilterDeviceCollectionLock, NULL);
-        if (!NT_SUCCESS(status)) {
+        if (!NT_SUCCESS(status = WdfWaitLockAcquire(
+            FilterDeviceCollectionLock,
+            NULL
+        )))
+        {
             TraceError(
                 TRACE_DEVICE,
                 "WdfWaitLockAcquire failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfWaitLockAcquire", status);
+            break;
         }
 
         //
         // WdfCollectionAdd takes a reference on the item object and removes
         // it when you call WdfCollectionRemove.
         //
-        status = WdfCollectionAdd(FilterDeviceCollection, device);
-        if (!NT_SUCCESS(status)) {
+        if (!NT_SUCCESS(status = WdfCollectionAdd(
+            FilterDeviceCollection,
+            device
+        )))
+        {
             TraceError(
                 TRACE_DEVICE,
                 "WdfCollectionAdd failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfCollectionAdd", status);
         }
         WdfWaitLockRelease(FilterDeviceCollectionLock);
 
-        if (!NT_SUCCESS(status)) {
-            return status;
+        if (!NT_SUCCESS(status))
+        {
+            break;
         }
 
 #endif
 
 #pragma endregion
 
-        status = WdfDeviceOpenRegistryKey(
+        /*
+         * Expands to e.g.:
+         *
+         * "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\USB\VID_XXXX&PID_XXXX\XXXXXXXXXXXXX\Device Parameters"
+         */
+        if (!NT_SUCCESS(status = WdfDeviceOpenRegistryKey(
             device,
             PLUGPLAY_REGKEY_DEVICE,
             KEY_READ,
             WDF_NO_OBJECT_ATTRIBUTES,
-            &key
-        );
-
-        if (NT_SUCCESS(status))
-        {
-            status = WdfRegistryQueryULong(
-                key,
-                &patchPSMRegValue,
-                &deviceContext->IsPsmPatchingEnabled
-            );
-
-            if (!NT_SUCCESS(status))
-            {
-                TraceError(
-                    TRACE_DEVICE,
-                    "WdfRegistryQueryULong failed with status %!STATUS!",
-                    status
-                );
-            }
-            else
-            {
-                TraceVerbose(
-                    TRACE_DEVICE,
-                    "BthPS3PSMPatchEnabled value retrieved"
-                );
-            }
-
-            WDF_OBJECT_ATTRIBUTES_INIT(&stringAttribs);
-            stringAttribs.ParentObject = device;
-
-            status = WdfStringCreate(
-                NULL,
-                &stringAttribs,
-                &deviceContext->SymbolicLinkName
-            );
-
-            if (!NT_SUCCESS(status))
-            {
-                TraceError(
-                    TRACE_DEVICE,
-                    "WdfStringCreate failed with status %!STATUS!",
-                    status
-                );
-            }
-            else
-            {
-                status = WdfRegistryQueryString(
-                    key,
-                    &linkNameRegValue,
-                    deviceContext->SymbolicLinkName
-                );
-
-                if (!NT_SUCCESS(status))
-                {
-                    TraceError(
-                        TRACE_DEVICE,
-                        "WdfRegistryQueryString failed with status %!STATUS!",
-                        status
-                    );
-                }
-                else
-                {
-                    TraceVerbose(
-                        TRACE_DEVICE,
-                        "SymbolicLinkName value retrieved"
-                    );
-                }
-            }
-
-            WdfRegistryClose(key);
-        }
-        else
+            &deviceContext->RegKeyDeviceNode
+        )))
         {
             TraceError(
                 TRACE_DEVICE,
                 "WdfDeviceOpenRegistryKey failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfDeviceOpenRegistryKey", status);
+            break;
         }
 
+        // 
+        // Query for BthPS3PSMPatchEnabled value
+        // 
+        if (!NT_SUCCESS(status = WdfRegistryQueryULong(
+            deviceContext->RegKeyDeviceNode,
+            &patchPSMRegValue,
+            &deviceContext->IsPsmPatchingEnabled
+        )))
+        {
+            TraceError(
+                TRACE_DEVICE,
+                "WdfRegistryQueryULong failed with status %!STATUS!",
+                status
+            );
+
+            //
+            // Do not log this case to ETW as it is normal on first launch
+            // 
+            if (status != STATUS_OBJECT_NAME_NOT_FOUND)
+            {
+                EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRegistryQueryULong", status);
+            }
+        }
+        else
+        {
+            TraceVerbose(
+                TRACE_DEVICE,
+                "BthPS3PSMPatchEnabled value retrieved"
+            );
+
+            const PWSTR instanceIdString = (const PWSTR)WdfMemoryGetBuffer(instanceId, NULL);
+
+            EventWriteGetPatchStatusForDeviceInstance(
+                NULL,
+                deviceContext->IsPsmPatchingEnabled,
+                instanceIdString
+            );
+        }
+
+        WDF_OBJECT_ATTRIBUTES_INIT(&stringAttributes);
+        stringAttributes.ParentObject = device;
+
+        // 
+        // Create string to hold symbolic link
+        // 
+        if (!NT_SUCCESS(status = WdfStringCreate(
+            NULL,
+            &stringAttributes,
+            &deviceContext->SymbolicLinkName
+        )))
+        {
+            TraceError(
+                TRACE_DEVICE,
+                "WdfStringCreate failed with status %!STATUS!",
+                status
+            );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfStringCreate", status);
+            break;
+        }
+
+        // 
+        // Grab symbolic link so device can be associated with radio in user-mode
+        // 
+        if (!NT_SUCCESS(status = WdfRegistryQueryString(
+            deviceContext->RegKeyDeviceNode,
+            &linkNameRegValue,
+            deviceContext->SymbolicLinkName
+        )))
+        {
+            TraceError(
+                TRACE_DEVICE,
+                "WdfRegistryQueryString failed with status %!STATUS!",
+                status
+            );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRegistryQueryString", status);
+            break;
+        }
 
 #ifndef BTHPS3PSM_WITH_CONTROL_DEVICE
         deviceContext->IsPsmPatchingEnabled = TRUE;
@@ -286,15 +317,17 @@ BthPS3PSM_CreateDevice(
         //
         // Create a control device
         //
-        status = BthPS3PSM_CreateControlDevice(device);
-        if (!NT_SUCCESS(status)) {
+        if (!NT_SUCCESS(status = BthPS3PSM_CreateControlDevice(
+            device
+        )))
+        {
             TraceError(
                 TRACE_DEVICE,
                 "BthPS3PSM_CreateControlDevice failed with status %!STATUS!",
                 status
             );
-
-            return status;
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"BthPS3PSM_CreateControlDevice", status);
+            break;
         }
 
 #pragma endregion
@@ -305,117 +338,95 @@ BthPS3PSM_CreateDevice(
         // Initialize the I/O Package and any Queues
         //
         status = BthPS3PSM_QueueInitialize(device);
+
+        } while (FALSE);
+
+        if (instanceId && !NT_SUCCESS(status))
+        {
+            WdfObjectDelete(instanceId);
+        }
+
+        FuncExit(TRACE_DEVICE, "status=%!STATUS!", status);
+
+        return status;
     }
+
+_Success_(return == STATUS_SUCCESS)
+_Must_inspect_result_
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTSTATUS
+BthPS3PSM_IsBthUsbDevice(
+    _In_ PWDFDEVICE_INIT DeviceInit,
+    _Inout_opt_ PBOOLEAN Result
+)
+{
+    NTSTATUS status;
+    WCHAR enumeratorName[MAX_DEVICE_ID_LEN];
+    WCHAR className[MAX_DEVICE_ID_LEN];
+    ULONG returnSize;
+    UNICODE_STRING lhsEnumeratorName, lhsClassName;
+    UNICODE_STRING rhsEnumeratorName, rhsClassName;
+
+    RtlInitUnicodeString(&rhsEnumeratorName, L"USB");
+    RtlInitUnicodeString(&rhsClassName, L"Bluetooth");
+
+    if (!NT_SUCCESS(status = WdfFdoInitQueryProperty(
+        DeviceInit,
+        DevicePropertyEnumeratorName,
+        sizeof(enumeratorName),
+        enumeratorName,
+        &returnSize
+    )))
+    {
+        return status;
+    }
+
+    if (!NT_SUCCESS(status = WdfFdoInitQueryProperty(
+        DeviceInit,
+        DevicePropertyClassName,
+        sizeof(className),
+        className,
+        &returnSize
+    )))
+    {
+        return status;
+    }
+
+    RtlInitUnicodeString(&lhsEnumeratorName, enumeratorName);
+    RtlInitUnicodeString(&lhsClassName, className);
+
+    if (Result)
+        *Result = ((RtlCompareUnicodeString(&lhsEnumeratorName, &rhsEnumeratorName, TRUE) == 0)
+            && (RtlCompareUnicodeString(&lhsClassName, &rhsClassName, TRUE) == 0));
 
     return status;
 }
 
-NTSTATUS BthPS3PSM_IsVirtualRootDevice(PWDFDEVICE_INIT DeviceInit, PBOOLEAN Result)
+_Success_(return == STATUS_SUCCESS)
+_Must_inspect_result_
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTSTATUS
+BthPS3PSM_GetPropertyInstanceId(
+    _In_ PWDFDEVICE_INIT DeviceInit,
+    _Inout_ WDFMEMORY * Memory
+)
 {
-    NTSTATUS status;
-	WCHAR enumeratorName[MAX_DEVICE_ID_LEN];
-	WCHAR hardwareID[MAX_DEVICE_ID_LEN];
-	WCHAR className[MAX_DEVICE_ID_LEN];
-	ULONG returnSize;
-	UNICODE_STRING lhsEnumeratorName, lhsHardwareID, lhsClassName;
-	UNICODE_STRING rhsEnumeratorName, rhsHardwareID, rhsClassName;
+    DEVPROPTYPE type;
+    WDF_OBJECT_ATTRIBUTES attributes;
+    WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+    WDF_DEVICE_PROPERTY_DATA property;
+    WDF_DEVICE_PROPERTY_DATA_INIT(&property, &DEVPKEY_Device_InstanceId);
 
-	RtlInitUnicodeString(&rhsEnumeratorName, L"ROOT");
-	RtlInitUnicodeString(&rhsHardwareID, BTHPS3PSM_FILTER_HARDWARE_ID);
-	RtlInitUnicodeString(&rhsClassName, L"System");
-	
-	status = WdfFdoInitQueryProperty(
-		DeviceInit,
-		DevicePropertyEnumeratorName,
-		sizeof(enumeratorName),
-		enumeratorName,
-		&returnSize
-	);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	status = WdfFdoInitQueryProperty(
-		DeviceInit,
-		DevicePropertyHardwareID,
-		sizeof(hardwareID),
-		hardwareID,
-		&returnSize
-	);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	status = WdfFdoInitQueryProperty(
-		DeviceInit,
-		DevicePropertyClassName,
-		sizeof(className),
-		className,
-		&returnSize
-	);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	RtlInitUnicodeString(&lhsEnumeratorName, enumeratorName);
-	RtlInitUnicodeString(&lhsHardwareID, hardwareID);
-	RtlInitUnicodeString(&lhsClassName, className);
-
-	if (Result)
-		*Result = ((RtlCompareUnicodeString(&lhsEnumeratorName, &rhsEnumeratorName, TRUE) == 0)
-			&& (RtlCompareUnicodeString(&lhsHardwareID, &rhsHardwareID, TRUE) == 0)
-			&& (RtlCompareUnicodeString(&lhsClassName, &rhsClassName, TRUE) == 0));
-
-	return status;
-}
-
-NTSTATUS BthPS3PSM_IsBthUsbDevice(PWDFDEVICE_INIT DeviceInit, PBOOLEAN Result)
-{
-    NTSTATUS status;
-	WCHAR enumeratorName[MAX_DEVICE_ID_LEN];
-	WCHAR className[MAX_DEVICE_ID_LEN];
-	ULONG returnSize;
-	UNICODE_STRING lhsEnumeratorName, lhsClassName;
-	UNICODE_STRING rhsEnumeratorName, rhsClassName;
-
-	RtlInitUnicodeString(&rhsEnumeratorName, L"USB");
-	RtlInitUnicodeString(&rhsClassName, L"Bluetooth");
-	
-	status = WdfFdoInitQueryProperty(
-		DeviceInit,
-		DevicePropertyEnumeratorName,
-		sizeof(enumeratorName),
-		enumeratorName,
-		&returnSize
-	);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	status = WdfFdoInitQueryProperty(
-		DeviceInit,
-		DevicePropertyClassName,
-		sizeof(className),
-		className,
-		&returnSize
-	);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	RtlInitUnicodeString(&lhsEnumeratorName, enumeratorName);
-	RtlInitUnicodeString(&lhsClassName, className);
-
-	if (Result)
-		*Result = ((RtlCompareUnicodeString(&lhsEnumeratorName, &rhsEnumeratorName, TRUE) == 0)
-			&& (RtlCompareUnicodeString(&lhsClassName, &rhsClassName, TRUE) == 0));
-
-	return status;
+    //
+    // Query DEVPKEY_Device_InstanceId
+    // 
+    return WdfFdoInitAllocAndQueryPropertyEx(DeviceInit,
+        &property,
+        NonPagedPoolNx,
+        &attributes,
+        Memory,
+        &type
+    );
 }
 
 //
@@ -428,9 +439,8 @@ BthPS3PSM_EvtDevicePrepareHardware(
     WDFCMRESLIST ResourcesTranslated
 )
 {
-    NTSTATUS                        status = STATUS_SUCCESS;
-    WDF_USB_DEVICE_CREATE_CONFIG    usbConfig;
-    PDEVICE_CONTEXT                 deviceContext;
+    NTSTATUS status = STATUS_SUCCESS;
+    WDF_USB_DEVICE_CREATE_CONFIG usbConfig;
 
     UNREFERENCED_PARAMETER(ResourcesRaw);
     UNREFERENCED_PARAMETER(ResourcesTranslated);
@@ -439,7 +449,7 @@ BthPS3PSM_EvtDevicePrepareHardware(
 
     FuncEntry(TRACE_DEVICE);
 
-    deviceContext = DeviceGetContext(Device);
+    const PDEVICE_CONTEXT deviceContext = DeviceGetContext(Device);
 
     //
     // Initialize the USB config context.
@@ -456,19 +466,19 @@ BthPS3PSM_EvtDevicePrepareHardware(
     // call WdfUsb* functions but "abuse" the URBs
     // coming from the upper function driver.
     // 
-    status = WdfUsbTargetDeviceCreateWithParameters(
+    if (!NT_SUCCESS(status = WdfUsbTargetDeviceCreateWithParameters(
         Device,
         &usbConfig,
         WDF_NO_OBJECT_ATTRIBUTES,
         &deviceContext->UsbDevice
-    );
-
-    if (!NT_SUCCESS(status)) {
-
+    )))
+    {
         TraceError(
             TRACE_QUEUE,
             "WdfUsbTargetDeviceCreateWithParameters failed with status %!STATUS!",
-            status);
+            status
+        );
+        EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfUsbTargetDeviceCreateWithParameters", status);
     }
 
     FuncExit(TRACE_DEVICE, "status=%!STATUS!", status);
@@ -491,27 +501,27 @@ BthPS3PSM_EvtDeviceContextCleanup(
 
     FuncEntry(TRACE_DEVICE);
 
-	PDEVICE_CONTEXT pDevCtx = DeviceGetContext(Device);
-	
+    const PDEVICE_CONTEXT pDevCtx = DeviceGetContext(Device);
+
 #ifdef BTHPS3PSM_WITH_CONTROL_DEVICE
 
-    ULONG               count, i;
-    WDFKEY              key;
-    NTSTATUS            status;
-    WDFDEVICE           devIter = NULL;
+    NTSTATUS status;
+    WDFDEVICE devIter = NULL;
 
-    DECLARE_CONST_UNICODE_STRING(patchPSMRegValue, G_PatchPSMRegValue);
-    
-    status = WdfWaitLockAcquire(FilterDeviceCollectionLock, NULL);
-    if (!NT_SUCCESS(status)) {
+    if (!NT_SUCCESS(status = WdfWaitLockAcquire(
+        FilterDeviceCollectionLock,
+        NULL
+    )))
+    {
         TraceError(
             TRACE_QUEUE,
             "WdfWaitLockAcquire failed with status %!STATUS!",
             status
         );
+        EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfWaitLockAcquire", status);
     }
 
-    count = WdfCollectionGetCount(FilterDeviceCollection);
+    const ULONG count = WdfCollectionGetCount(FilterDeviceCollection);
 
     if (count == 1)
     {
@@ -531,7 +541,7 @@ BthPS3PSM_EvtDeviceContextCleanup(
     // Collection might be empty due to device creation failure
     // Loop though and compare items before removal attempt
     // 
-    for (i = 0; i < count; i++)
+    for (ULONG i = 0; i < count; i++)
     {
         devIter = WdfCollectionGetItem(FilterDeviceCollection, i);
 
@@ -544,54 +554,10 @@ BthPS3PSM_EvtDeviceContextCleanup(
 
     WdfWaitLockRelease(FilterDeviceCollectionLock);
 
-#pragma region Store settings in Registry Hardware Key
-
-    pDevCtx = DeviceGetContext(Device);
-
-    status = WdfDeviceOpenRegistryKey(
-        Device,
-        PLUGPLAY_REGKEY_DEVICE,
-        KEY_WRITE,
-        WDF_NO_OBJECT_ATTRIBUTES,
-        &key
-    );
-
-    if (NT_SUCCESS(status))
-    {
-        status = WdfRegistryAssignULong(
-            key,
-            &patchPSMRegValue,
-            pDevCtx->IsPsmPatchingEnabled
-        );
-
-        if (!NT_SUCCESS(status))
-        {
-            TraceError(
-                TRACE_DEVICE,
-                "WdfRegistryAssignULong failed with status %!STATUS!",
-                status
-            );
-        }
-        else
-        {
-            TraceVerbose(
-                TRACE_DEVICE,
-                "Settings stored"
-            );
-        }
-
-        WdfRegistryClose(key);
-    }
-    else
-    {
-        TraceError(
-            TRACE_DEVICE,
-            "WdfDeviceOpenRegistryKey failed with status %!STATUS!",
-            status
-        );
-    }
-
-#pragma endregion
+    //
+    // This object has no parent so we need to delete it manually
+    // 
+    WdfObjectDelete(pDevCtx->InstanceId);
 
 #else
     UNREFERENCED_PARAMETER(Device);

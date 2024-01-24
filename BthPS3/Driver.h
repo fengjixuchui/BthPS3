@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -45,6 +45,9 @@
 #include <wdf.h>
 #include <initguid.h>
 #include <devpkey.h>
+#include <ntimage.h>
+#include <bcrypt.h>
+#include <Domito.h>
 
 #include "device.h"
 #include "trace.h"

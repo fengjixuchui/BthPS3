@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2022, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -35,6 +35,7 @@
  **********************************************************************************/
 
 
+// ReSharper disable CppClangTidyModernizeMacroToEnum
 #pragma once
 
 #define MAX_DEVICE_ID_LEN				200
@@ -134,21 +135,25 @@ CLIENT_CONNECTION_REQUEST_REUSE(
 // 
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+_Success_(return == STATUS_SUCCESS)
 NTSTATUS
 BthPS3_PDO_Create(
 	_In_ PBTHPS3_SERVER_CONTEXT Context,
 	_In_ BTH_ADDR RemoteAddress,
 	_In_ DS_DEVICE_TYPE DeviceType,
 	_In_ PSTR RemoteName,
-	_Out_ PBTHPS3_PDO_CONTEXT* PdoContext
+	_Outptr_result_maybenull_ BTHPS3_PDO_CONTEXT** PdoContext
 );
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+_Success_(return == STATUS_SUCCESS)
 NTSTATUS
 BthPS3_PDO_RetrieveByBthAddr(
 	_In_ PBTHPS3_SERVER_CONTEXT Context,
 	_In_ BTH_ADDR RemoteAddress,
-	_Out_ PBTHPS3_PDO_CONTEXT* PdoContext
+	_Outptr_result_maybenull_ PBTHPS3_PDO_CONTEXT* PdoContext
 );
 
 _IRQL_requires_max_(PASSIVE_LEVEL)

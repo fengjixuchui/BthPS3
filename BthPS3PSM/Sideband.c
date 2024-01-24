@@ -4,7 +4,7 @@
  *                                                                                *
  * BSD 3-Clause License                                                           *
  *                                                                                *
- * Copyright (c) 2018-2021, Nefarius Software Solutions e.U.                      *
+ * Copyright (c) 2018-2023, Nefarius Software Solutions e.U.                      *
  * All rights reserved.                                                           *
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
@@ -38,6 +38,7 @@
 #include "Driver.h"
 #include "Sideband.tmh"
 #include <wdmsec.h>
+#include <BthPS3PSMETW.h>
 
 
 #ifdef BTHPS3PSM_WITH_CONTROL_DEVICE
@@ -108,13 +109,15 @@ BthPS3PSM_CreateControlDevice(
             &SDDL_DEVOBJ_SYS_ALL_ADM_ALL
         );
 
-        if (pInit == NULL) {
+        if (pInit == NULL)
+        {
             status = STATUS_INSUFFICIENT_RESOURCES;
             TraceError(
                 TRACE_SIDEBAND,
                 "WdfControlDeviceInitAllocate failed with %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfControlDeviceInitAllocate", status);
             break;
         }
 
@@ -126,21 +129,27 @@ BthPS3PSM_CreateControlDevice(
         //
         // Assign name to expose
         // 
-        status = WdfDeviceInitAssignName(pInit, &ntDeviceName);
-
-        if (!NT_SUCCESS(status)) {
+        if (!NT_SUCCESS(status = WdfDeviceInitAssignName(
+            pInit,
+            &ntDeviceName
+        )))
+        {
             TraceError(
                 TRACE_SIDEBAND,
                 "WdfDeviceInitAssignName failed with %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfControlDeviceInitAllocate", status);
             break;
         }
 
-        status = WdfDeviceCreate(&pInit,
+        if (!NT_SUCCESS(status = WdfDeviceCreate(
+            &pInit,
             WDF_NO_OBJECT_ATTRIBUTES,
-            &controlDevice);
-        if (!NT_SUCCESS(status)) {
+            &controlDevice
+        )))
+        {
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfDeviceCreate", status);
             break;
         }
 
@@ -149,20 +158,24 @@ BthPS3PSM_CreateControlDevice(
         // the device.
         //
 
-        status = WdfDeviceCreateSymbolicLink(controlDevice,
-            &symbolicLinkName);
-
-        if (!NT_SUCCESS(status)) {
+        if (!NT_SUCCESS(status = WdfDeviceCreateSymbolicLink(
+            controlDevice,
+            &symbolicLinkName
+        )))
+        {
             TraceError(
                 TRACE_SIDEBAND,
                 "WdfDeviceCreateSymbolicLink failed with %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfDeviceCreateSymbolicLink", status);
             break;
         }
 
-        WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&ioQueueConfig,
-            WdfIoQueueDispatchSequential);
+        WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
+            &ioQueueConfig,
+            WdfIoQueueDispatchSequential
+        );
 
         ioQueueConfig.EvtIoDeviceControl = BthPS3PSM_SidebandIoDeviceControl;
 
@@ -170,17 +183,19 @@ BthPS3PSM_CreateControlDevice(
         // Framework by default creates non-power managed queues for
         // filter drivers.
         //
-        status = WdfIoQueueCreate(controlDevice,
+        if (!NT_SUCCESS(status = WdfIoQueueCreate(
+            controlDevice,
             &ioQueueConfig,
             WDF_NO_OBJECT_ATTRIBUTES,
             &queue // pointer to default queue
-        );
-        if (!NT_SUCCESS(status)) {
+        )))
+        {
             TraceError(
                 TRACE_SIDEBAND,
                 "WdfIoQueueCreate failed with %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfIoQueueCreate", status);
             break;
         }
 
@@ -196,17 +211,17 @@ BthPS3PSM_CreateControlDevice(
 
     if (pInit != NULL)
     {
-	    WdfDeviceInitFree(pInit);
+        WdfDeviceInitFree(pInit);
     }
 
     if (!NT_SUCCESS(status) && controlDevice != NULL)
     {
-	    //
-	    // Release the reference on the newly created object, since
-	    // we couldn't initialize it.
-	    //
-	    WdfObjectDelete(controlDevice);
-	    controlDevice = NULL;
+        //
+        // Release the reference on the newly created object, since
+        // we couldn't initialize it.
+        //
+        WdfObjectDelete(controlDevice);
+        controlDevice = NULL;
     }
 
     FuncExit(TRACE_SIDEBAND, "status=%!STATUS!", status);
@@ -249,14 +264,17 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
     _In_ ULONG      IoControlCode
 )
 {
-    NTSTATUS                            status = STATUS_UNSUCCESSFUL;
-    size_t                              length = 0;
-    WDFDEVICE                           device;
-    PDEVICE_CONTEXT                     pDevCtx = NULL;
-    PBTHPS3PSM_ENABLE_PSM_PATCHING      pEnable = NULL;
-    PBTHPS3PSM_DISABLE_PSM_PATCHING     pDisable = NULL;
-    PBTHPS3PSM_GET_PSM_PATCHING         pGet = NULL;
-    UNICODE_STRING                      linkName;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    size_t length = 0;
+    WDFDEVICE device;
+    PDEVICE_CONTEXT pDevCtx = NULL;
+    PBTHPS3PSM_ENABLE_PSM_PATCHING pEnable = NULL;
+    PBTHPS3PSM_DISABLE_PSM_PATCHING pDisable = NULL;
+    PBTHPS3PSM_GET_PSM_PATCHING pGet = NULL;
+    UNICODE_STRING linkName;
+    WDF_WORKITEM_CONFIG wiCfg;
+    WDF_OBJECT_ATTRIBUTES attributes;
+    WDFWORKITEM workItem = NULL;
 
     FuncEntry(TRACE_SIDEBAND);
 
@@ -286,6 +304,7 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                 "WdfRequestRetrieveInputBuffer failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRequestRetrieveInputBuffer", status);
 
             break;
         }
@@ -309,6 +328,31 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                 "PSM patch enabled for device %d",
                 pEnable->DeviceIndex
             );
+
+            //
+            // Prepare async saving at PASSIVE_LEVEL
+            // 
+            WDF_WORKITEM_CONFIG_INIT(&wiCfg, BthPS3PSM_EvtSaveConfigToRegistry);
+            WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+            attributes.ParentObject = device;
+
+            if (!NT_SUCCESS(status = WdfWorkItemCreate(
+                &wiCfg,
+                &attributes,
+                &workItem
+            )))
+            {
+                TraceError(
+                    TRACE_SIDEBAND,
+                    "WdfWorkItemCreate failed with status %!STATUS!",
+                    status
+                );
+                EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfWorkItemCreate", status);
+            }
+            else
+            {
+                WdfWorkItemEnqueue(workItem);
+            }
         }
 
         WdfWaitLockRelease(FilterDeviceCollectionLock);
@@ -336,6 +380,7 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                 "WdfRequestRetrieveInputBuffer failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRequestRetrieveInputBuffer", status);
 
             break;
         }
@@ -359,6 +404,31 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                 "PSM patch disabled for device %d",
                 pDisable->DeviceIndex
             );
+
+            //
+            // Prepare async saving at PASSIVE_LEVEL
+            // 
+            WDF_WORKITEM_CONFIG_INIT(&wiCfg, BthPS3PSM_EvtSaveConfigToRegistry);
+            WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+            attributes.ParentObject = device;
+
+            if (!NT_SUCCESS(status = WdfWorkItemCreate(
+                &wiCfg,
+                &attributes,
+                &workItem
+            )))
+            {
+                TraceError(
+                    TRACE_SIDEBAND,
+                    "WdfWorkItemCreate failed with status %!STATUS!",
+                    status
+                );
+                EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfWorkItemCreate", status);
+            }
+            else
+            {
+                WdfWorkItemEnqueue(workItem);
+            }
         }
 
         WdfWaitLockRelease(FilterDeviceCollectionLock);
@@ -386,6 +456,7 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                 "WdfRequestRetrieveInputBuffer failed with status %!STATUS!",
                 status
             );
+            EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRequestRetrieveInputBuffer", status);
 
             break;
         }
@@ -417,6 +488,7 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
                     "WdfRequestRetrieveOutputBuffer failed with status %!STATUS!",
                     status
                 );
+                EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRequestRetrieveOutputBuffer", status);
             }
             else
             {
@@ -464,5 +536,54 @@ VOID BthPS3PSM_SidebandIoDeviceControl(
     FuncExitNoReturn(TRACE_SIDEBAND);
 }
 #pragma warning(pop) // enable 28118 again
+
+//
+// Async operation to store changed settings to registry at PASSIVE_LEVEL
+// 
+void BthPS3PSM_EvtSaveConfigToRegistry(
+    WDFWORKITEM WorkItem
+)
+{
+    NTSTATUS status;
+    const WDFDEVICE device = WdfWorkItemGetParentObject(WorkItem);
+    const PDEVICE_CONTEXT pDevCtx = DeviceGetContext(device);
+
+    DECLARE_CONST_UNICODE_STRING(patchPSMRegValue, G_PatchPSMRegValue);
+
+    FuncEntryArguments(TRACE_SIDEBAND, "IRQL=%!irql!", KeGetCurrentIrql());
+
+    if (!NT_SUCCESS(status = WdfRegistryAssignULong(
+        pDevCtx->RegKeyDeviceNode,
+        &patchPSMRegValue,
+        pDevCtx->IsPsmPatchingEnabled
+    )))
+    {
+        TraceError(
+            TRACE_SIDEBAND,
+            "WdfRegistryAssignULong failed with status %!STATUS!",
+            status
+        );
+        EventWriteFailedWithNTStatus(NULL, __FUNCTION__, L"WdfRegistryAssignULong", status);
+    }
+    else
+    {
+        TraceVerbose(
+            TRACE_SIDEBAND,
+            "Settings stored"
+        );
+
+        const PWSTR instanceIdString = (const PWSTR)WdfMemoryGetBuffer(pDevCtx->InstanceId, NULL);
+
+        EventWriteSetPatchStatusForDeviceInstance(
+            NULL,
+            pDevCtx->IsPsmPatchingEnabled,
+            instanceIdString
+        );
+    }
+    
+    WdfObjectDelete(WorkItem);
+
+    FuncExitNoReturn(TRACE_SIDEBAND);
+}
 
 #endif

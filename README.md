@@ -5,7 +5,7 @@
 Windows kernel-mode Bluetooth Profile & Filter Drivers for PS3 peripherals.
 
 [![Build status](https://ci.appveyor.com/api/projects/status/lna6ewnbck5diu6l/branch/master?svg=true)](https://ci.appveyor.com/project/nefarius/bthps3/branch/master)
- [![GitHub All Releases](https://img.shields.io/github/downloads/ViGEm/BthPS3/total)](https://somsubhra.github.io/github-release-stats/?username=ViGEm&repository=BthPS3) [![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.vigem.org) [![Website](https://img.shields.io/website-up-down-green-red/https/vigem.org.svg?label=ViGEm.org)](https://vigem.org/) [![GitHub followers](https://img.shields.io/github/followers/nefarius.svg?style=social&label=Follow)](https://github.com/nefarius) [![Twitter Follow](https://img.shields.io/twitter/follow/nefariusmaximus.svg?style=social&label=Follow)](https://twitter.com/nefariusmaximus)
+ [![GitHub All Releases](https://img.shields.io/github/downloads/ViGEm/BthPS3/total)](https://somsubhra.github.io/github-release-stats/?username=ViGEm&repository=BthPS3) [![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.nefarius.at) [![Website](https://img.shields.io/website-up-down-green-red/https/docs.nefarius.at.svg?label=docs.nefarius.at)](https://docs.nefarius.at/) [![GitHub followers](https://img.shields.io/github/followers/nefarius.svg?style=social&label=Follow)](https://github.com/nefarius) [![Mastodon Follow](https://img.shields.io/mastodon/follow/109321120351128938?domain=https%3A%2F%2Ffosstodon.org%2F&style=social)](https://fosstodon.org/@Nefarius)
 
 ## About
 
@@ -33,9 +33,15 @@ This solution contains **BSD-3-Clause** and **MIT** licensed components:
 
 For details, please consult the individual `LICENSE` files.
 
+This is a community project and not affiliated with Sony Interactive Entertainment Inc. in any way. "PlayStation", "PSP", "PS2", "PS one", "DUALSHOCK" and "SIXAXIS" are registered trademarks of Sony Interactive Entertainment Inc.
+
 ## Environment
 
-BthPS3 components (drivers, utilities) are developed, designed and tested for Windows 7 SP1 or newer (x86, x64).
+BthPS3 components can run on **Windows 10 version 1507 or newer** (x64, ARM64).
+
+<details>
+
+<summary>Supported Bluetooth host devices</summary>
 
 ## Supported Bluetooth host devices
 
@@ -48,7 +54,7 @@ When loaded onto an unsupported host radio, device boot will fail with `STATUS_D
 
 ![P37N2cgWdG.png](docs/P37N2cgWdG.png)
 
-For a list of tested devices [consult the extended documentation](https://vigem.org/projects/BthPS3/Compatible-Bluetooth-Devices/).
+For a list of tested devices [consult the extended documentation](https://docs.nefarius.at/projects/BthPS3/Compatible-Bluetooth-Devices/).
 
 ### Link Manager Versions
 
@@ -67,20 +73,57 @@ For a list of tested devices [consult the extended documentation](https://vigem.
 | 10  | Bluetooth 5.1       |
 | 11  | Bluetooth 5.2       |
 
+</details>
+
+## Installation
+
+Pre-built binaries and instructions are provided by `Nefarius Software Solutions e.U.` and [available via setup](https://github.com/ViGEm/BthPS3/releases/latest). Official support covers **Windows 10/11 x64/ARM64** only, filing issues about any other version or architecture will be discarded.
+
+Check out the companion solution [DsHidMini](https://github.com/ViGEm/DsHidMini) for using the controller in games!
+
 ## How to build
+
+Knowledge on how to build and (test-)sign Windows drivers is required for creating usable builds. This is outside of the scope of the project documentation.
+
+<details>
+
+<summary>Build instructions and details</summary>
 
 ### Prerequisites
 
-- [Step 1: Install Visual Studio 2019](<https://docs.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads#step-1-install-visual-studio>)
-  - From the Visual Studio Installer, add the Individual component `MSVC v142 - VS 2019 C++ x64/x86 Spectre-mitigated libs`
-- [Step 2: Install WDK for Windows 10, version 2004](<https://docs.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads#step-2-install-the-wdk>)
-- [Step 3: Install the WiX Toolset **v3.14.0.6526**](https://wixtoolset.org/releases/v3-14-0-6526/)
+- [Step 1: Install Visual Studio 2022](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk#download-icon-step-1-install-visual-studio-2022)
+  - On the `Workloads` tab under `Desktop & Mobile` select *at least* `.NET desktop development` and `Desktop development with C++`.  
+    ![workloads.png](assets/workloads.png)
+  - On the `Individual components` tab search for and select the `Spectre-mitigate libs (Latest)` for all architectures you wish to build for.  
+    ![components.png](assets/components.png)
+- [Step 2: Install Windows 11, version 22H2 SDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk#download-icon-step-2-install-windows-11-version-22h2-sdk)
+- [Step 3: Install Windows 11, version 22H2 WDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk#download-icon-step-3-install-windows-11-version-22h2-wdk)
+- [Step 4: Install the WiX Toolset **v3.14.0.6526**](https://wixtoolset.org/releases/v3-14-0-6526/) (or newer)
+- [Step 5: Setup and build Microsoft DMF](https://github.com/Microsoft/DMF/blob/master/Dmf/Documentation/Driver%20Module%20Framework.md#simplifying-compilation-and-linking-with-dmf)
+- [Step 6: Setup and build Domito](https://git.nefarius.at/nefarius/Domito#how-to-use)
 
 You can build individual projects of the solution within Visual Studio.
 
-## Documentation
+### Branches
 
-Take a look at the [project page](https://vigem.org/projects/BthPS3/) for more information.
+The project uses the following branch strategies:
+
+- `master` - stable code base, in sync with tagged public releases
+- `devel` - work-in-progress changes, mostly bigger changes spanning a couple PRs
+
+### Build artifacts
+
+Tagged CI builds get mirrored [to the buildbot web server](https://buildbot.nefarius.at/builds/BthPS3/), use at your own risk, no support provided whatsoever!
+
+</details>
+
+## Support & Documentation
+
+Everything you need to know is documented [on the project page](https://docs.nefarius.at/projects/BthPS3/), read carefully before considering filing an issue.
+
+<details>
+
+<summary>Architecture overview</summary>
 
 ## Device tree
 
@@ -139,26 +182,18 @@ Below representation attempts to visualize the relationships between the drivers
 
 ```
 
-## Installation
-
-Pre-built binaries and instructions are provided by `Nefarius Software Solutions e.U.` and [available as an all-in-one setup](https://github.com/ViGEm/BthPS3/releases/latest) (**note:** officially supports **Windows 10/11** only).
-
-Check out the companion solution [DsHidMini](https://github.com/ViGEm/DsHidMini) for using the controller in games!
-
-### Support
-
-If facing issues please [search on the forums](https://forums.vigem.org/) first for similar cases and possible solutions.
-
-## Contributing
-
-This project was birthed out of curiosity and the drive to learn more about Bluetooth drivers for Microsoft Windows (and a lingering love for the DualShock 3). If it brought you joy please consider checking out the Sponsor-Button on top and toss a coin to your Developer, O' Valley of Gamers 😃
+</details>
 
 ## Sources & 3rd party credits
 
-- [ViGEm Forums - Bluetooth Filter Driver for DS3-compatibility - research notes](https://forums.vigem.org/topic/242/bluetooth-filter-driver-for-ds3-compatibility-research-notes)
+This application benefits from these awesome projects ❤ (appearance in no special order):
+
+- [ViGEm Forums - Bluetooth Filter Driver for DS3-compatibility - research notes](./Research)
 - [Arduino - felis/USB_Host_Shield_2.0 - PS3 Information](https://github.com/felis/USB_Host_Shield_2.0/wiki/PS3-Information#Bluetooth)
 - [Emulate HID Device with Windows Desktop](https://nadavrub.wordpress.com/2015/07/17/simulate-hid-device-with-windows-desktop/)
 - [microsoft/Windows-driver-samples - Bluetooth Echo L2CAP Profile Driver](https://github.com/Microsoft/Windows-driver-samples/tree/master/bluetooth/bthecho)
 - [Microsoft Bluetooth DDI - Reserved PSMs](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/bthddi/ns-bthddi-_brb_psm#members)
 - [Eleccelerator Wiki - DualShock 3](http://eleccelerator.com/wiki/index.php?title=DualShock_3)
 - [Link Manager Protocol (LMP)](https://www.bluetooth.com/specifications/assigned-numbers/link-manager/)
+- [Nefarius' Domito Library](https://git.nefarius.at/nefarius/Domito)
+- [NUKE Build Automation](https://nuke.build/)
